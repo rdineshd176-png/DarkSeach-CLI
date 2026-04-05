@@ -35,7 +35,8 @@ Privacy-focused command-line research search tool that routes all search traffic
 ## Auto Setup Script (Linux/Termux)
 
 You can run a single setup script to check Python, install pip tooling,
-install `requests[socks]`, and install Tor when possible:
+install `requests[socks]`, install Tor when possible, auto-start Tor,
+and launch DarkSearch CLI:
 
 ```bash
 chmod +x setup.sh

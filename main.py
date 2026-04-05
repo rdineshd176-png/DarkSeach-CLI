@@ -88,7 +88,9 @@ def handle_command(raw: str, client: SearchClient) -> bool:
 
 
 def run_cli() -> None:
-    print(colorize("DarkSearch CLI", "bold"))
+    print(colorize("===============================================", "cyan"))
+    print(colorize("   DARKSEARCH CLI :: PRIVATE RESEARCH CONSOLE", "bold"))
+    print(colorize("===============================================", "cyan"))
     print("Privacy-focused research search via Tor SOCKS5 proxy.")
     print(colorize("[ R.dinesh :: Privacy by Design ]", "yellow"))
 
