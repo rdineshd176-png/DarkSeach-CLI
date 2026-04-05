@@ -1,5 +1,5 @@
 """
-DocSearch CLI - Privacy-focused research search tool.
+DarkSearch CLI - Privacy-focused research search tool.
 
 Setup:
 1) pip install requests[socks]
@@ -25,7 +25,7 @@ def clear_screen() -> None:
 
 def print_help() -> None:
     print("\nCommands:")
-    print("  exit                 Quit DocSearch CLI")
+    print("  exit                 Quit DarkSearch CLI")
     print("  clear                Clear terminal")
     print("  engine               Show current engine")
     print("  engine duckduckgo    Switch to DuckDuckGo HTML")
@@ -88,8 +88,9 @@ def handle_command(raw: str, client: SearchClient) -> bool:
 
 
 def run_cli() -> None:
-    print(colorize("DocSearch CLI", "bold"))
+    print(colorize("DarkSearch CLI", "bold"))
     print("Privacy-focused research search via Tor SOCKS5 proxy.")
+    print(colorize("[ R.dinesh :: Privacy by Design ]", "yellow"))
 
     if not is_tor_running():
         print(colorize("Tor is not running. Please start Tor.", "red"))
@@ -100,13 +101,13 @@ def run_cli() -> None:
 
     while True:
         try:
-            raw = input("DocSearch> ").strip()
+            raw = input("DarkSearch> ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\nExiting DocSearch CLI.")
+            print("\nExiting DarkSearch CLI.")
             break
 
         if raw.lower() == "exit":
-            print("Exiting DocSearch CLI.")
+            print("Exiting DarkSearch CLI.")
             break
 
         if handle_command(raw.lower(), client):

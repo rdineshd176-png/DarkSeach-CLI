@@ -1,6 +1,8 @@
-# DocSearch CLI
+# DarkSearch CLI
 
 Privacy-focused command-line research search tool that routes all search traffic through Tor.
+
+> Crafted by **R.dinesh** :: Privacy by Design // Research in Stealth Mode
 
 ## Setup
 
@@ -24,7 +26,7 @@ Privacy-focused command-line research search tool that routes all search traffic
    service tor start
    ```
 
-3. Run DocSearch CLI:
+3. Run DarkSearch CLI:
 
    ```bash
    python main.py
@@ -42,7 +44,7 @@ chmod +x setup.sh
 
 ## Features
 
-- Interactive prompt: `DocSearch> `
+- Interactive prompt: `DarkSearch> `
 - Commands: `exit`, `clear`, `help`
 - Optional commands: `engine`, `engine duckduckgo`, `engine searxng`, `anon on`, `anon off`
 - Search results include title, URL, and summary

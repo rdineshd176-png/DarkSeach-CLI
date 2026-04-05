@@ -1,4 +1,4 @@
-"""Tor connectivity helpers for DocSearch CLI."""
+"""Tor connectivity helpers for DarkSearch CLI."""
 
 from typing import Dict
 

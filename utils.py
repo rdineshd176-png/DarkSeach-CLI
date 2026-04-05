@@ -1,4 +1,4 @@
-"""Utility helpers for DocSearch CLI.
+"""Utility helpers for DarkSearch CLI.
 
 No query history, logs, or telemetry are stored.
 """

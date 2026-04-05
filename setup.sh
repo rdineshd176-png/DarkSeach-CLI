@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# DocSearch CLI bootstrap script for Linux / Termux
+# DarkSearch CLI bootstrap script for Linux / Termux
 # - Verifies Python and pip
 # - Installs Tor when possible
 # - Installs Python dependency: requests[socks]
@@ -123,7 +123,7 @@ install_tor_by_pkg_manager() {
   return 1
 }
 
-print_info "Starting DocSearch CLI setup in: $PROJECT_DIR"
+print_info "Starting DarkSearch CLI setup in: $PROJECT_DIR"
 
 if have_cmd python3; then
   PYTHON_BIN="python3"
@@ -176,7 +176,7 @@ else
   print_warn "Tor is not installed. Attempting automatic installation..."
   if ! install_tor_by_pkg_manager; then
     print_warn "Could not auto-install Tor (unsupported package manager)."
-    print_warn "Install Tor manually to use DocSearch CLI securely."
+    print_warn "Install Tor manually to use DarkSearch CLI securely."
   fi
 fi
 
@@ -188,7 +188,7 @@ Next steps:
 1) Start Tor:
    - tor
    - or service tor start
-2) Run DocSearch CLI:
+2) Run DarkSearch CLI:
    python3 main.py
    (or: python main.py)
 EOF

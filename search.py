@@ -1,4 +1,4 @@
-"""Search engine integration for DocSearch CLI."""
+"""Search engine integration for DarkSearch CLI."""
 
 from html import unescape
 import re
