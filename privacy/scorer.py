@@ -23,19 +23,31 @@ def score_url(url: str) -> int:
     query_keys = {key.lower() for key in parse_qs(parsed.query).keys()}
 
     score = 10
+
+    # HTTP links leak metadata more often than HTTPS.
     if parsed.scheme != "https":
+        score -= 3
+
+    if any(key in TRACKER_KEYS or key.startswith("utm_") for key in query_keys):
         score -= 2
 
-    tracker_count = sum(1 for key in query_keys if key in TRACKER_KEYS or key.startswith("utm_"))
-    score -= min(tracker_count, 4)
+    if any(word in host for word in ["ads", "tracking", "click", "redirect"]):
+        score -= 1
 
-    if any(word in host for word in ["ads", "doubleclick", "tracker", "analytics"]):
+    return max(1, min(10, score))
+
+
+def score_result(result: dict[str, object]) -> int:
+    """Compute privacy score using both URL and parser metadata."""
+    score = score_url(str(result.get("url", "")))
+
+    if bool(result.get("had_redirect", False)):
         score -= 2
 
     return max(1, min(10, score))
 
 
-def attach_privacy_scores(results: list[dict[str, str]]) -> list[dict[str, str]]:
+def attach_privacy_scores(results: list[dict[str, object]]) -> list[dict[str, object]]:
     for row in results:
-        row["privacy_score"] = score_url(row.get("url", ""))
+        row["privacy_score"] = score_result(row)
     return results

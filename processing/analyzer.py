@@ -32,6 +32,14 @@ STOPWORDS = {
     "they",
     "http",
     "https",
+    "www",
+    "com",
+    "org",
+    "results",
+    "result",
+    "research",
+    "search",
+    "page",
 }
 
 
@@ -49,18 +57,23 @@ def _split_sentences(text: str) -> list[str]:
 
 
 def analyze_results(query: str, results: list[dict[str, str]]) -> dict[str, object]:
-    corpus = " ".join(
-        f"{row.get('title', '')}. {row.get('summary', '')}" for row in results[:8]
-    )
+    top_rows = results[:8]
+    corpus = " ".join(f"{row.get('title', '')}. {row.get('summary', '')}" for row in top_rows)
     tokens = _tokenize(corpus)
-    top_keywords = [word for word, _ in Counter(tokens).most_common(8)]
+    frequencies = Counter(tokens)
+    top_keywords = [word for word, _ in frequencies.most_common(8)]
 
-    sentences = _split_sentences(corpus)
+    sentences = []
+    for row in top_rows:
+        sentences.extend(_split_sentences(row.get("summary", "")))
     keyword_set = set(top_keywords)
 
     ranked_sentences = sorted(
         sentences,
-        key=lambda line: sum(1 for token in _tokenize(line) if token in keyword_set),
+        key=lambda line: (
+            sum(1 for token in _tokenize(line) if token in keyword_set),
+            len(line),
+        ),
         reverse=True,
     )
     chosen = ranked_sentences[:3] if ranked_sentences else ["No meaningful summary could be generated."]
@@ -69,13 +82,20 @@ def analyze_results(query: str, results: list[dict[str, str]]) -> dict[str, obje
     if results:
         avg_privacy = sum(float(row.get("privacy_score", 0)) for row in results) / len(results)
 
+    key_topic = query.strip() or "General research"
+    if not query.strip() and top_keywords:
+        key_topic = " / ".join(top_keywords[:2])
+
+    trusted_sources = sum(1 for row in top_rows if float(row.get("privacy_score", 0)) >= 8)
+
     return {
-        "key_topic": query.strip() or "General research",
+        "key_topic": key_topic,
         "keywords": top_keywords,
         "summary": " ".join(chosen),
         "insights": [
-            f"Top result count analyzed: {min(len(results), 8)}",
+            f"Top result count analyzed: {len(top_rows)}",
             f"Average privacy score: {avg_privacy:.1f}/10",
             f"Most common keyword: {top_keywords[0] if top_keywords else 'N/A'}",
+            f"Higher-privacy sources (>=8/10): {trusted_sources}/{len(top_rows) if top_rows else 0}",
         ],
     }

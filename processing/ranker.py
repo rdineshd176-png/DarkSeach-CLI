@@ -1,6 +1,7 @@
 """Ranking and deduplication logic for search results."""
 
 from collections import Counter
+import re
 from urllib.parse import urlparse
 
 TRUST_HINTS = [
@@ -21,14 +22,29 @@ def _normalize_url_key(url: str) -> str:
     return f"{netloc}{path}"
 
 
+def _title_fingerprint(title: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+", (title or "").lower())
+    return " ".join(tokens[:10])
+
+
 def deduplicate(results: list[dict[str, str]]) -> list[dict[str, str]]:
-    seen = set()
+    seen_urls = set()
+    seen_titles = set()
     unique_rows = []
     for row in results:
-        key = _normalize_url_key(row.get("url", ""))
-        if not key or key in seen:
+        url_key = _normalize_url_key(row.get("url", ""))
+        title_key = _title_fingerprint(row.get("title", ""))
+
+        if not url_key:
             continue
-        seen.add(key)
+
+        # Drop exact URL duplicates and near-title duplicates to reduce noisy repeats.
+        if url_key in seen_urls or (title_key and title_key in seen_titles):
+            continue
+
+        seen_urls.add(url_key)
+        if title_key:
+            seen_titles.add(title_key)
         unique_rows.append(row)
     return unique_rows
 

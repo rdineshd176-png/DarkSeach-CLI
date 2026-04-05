@@ -2,6 +2,7 @@
 
 import random
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, List
 
@@ -24,6 +25,13 @@ REFERERS = [
     "https://www.qwant.com/",
 ]
 
+LANGUAGE_HEADERS = [
+    "en-US,en;q=0.7",
+    "en-GB,en;q=0.8",
+    "en;q=0.6",
+    "en-US,en;q=0.9,fr;q=0.3",
+]
+
 
 def load_user_agents(path: Path) -> List[str]:
     """Load user-agents from file with safe fallback."""
@@ -37,14 +45,16 @@ def load_user_agents(path: Path) -> List[str]:
 
 def build_random_headers(user_agents: List[str]) -> Dict[str, str]:
     """Generate per-request randomized browser-like headers."""
-    return {
-        "User-Agent": random.choice(user_agents),
-        "Accept": random.choice(ACCEPT_HEADERS),
-        "Accept-Language": random.choice(["en-US,en;q=0.7", "en-GB,en;q=0.8"]),
-        "Referer": random.choice(REFERERS),
-        "DNT": "1",
-        "Connection": "close",
-    }
+    header_items = [
+        ("User-Agent", random.choice(user_agents)),
+        ("Accept", random.choice(ACCEPT_HEADERS)),
+        ("Accept-Language", random.choice(LANGUAGE_HEADERS)),
+        ("Referer", random.choice(REFERERS)),
+        ("Connection", random.choice(["close", "keep-alive"])),
+        ("DNT", "1"),
+    ]
+    random.shuffle(header_items)
+    return OrderedDict(header_items)
 
 
 def random_delay(anon_mode: bool) -> None:
