@@ -1,64 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# DarkSearch CLI bootstrap script for Linux / Termux
-# - Verifies Python and pip
-# - Installs Tor when possible
-# - Installs Python dependency: requests[socks]
-# - Prints next steps
+# ===============================================
+# DARKSEARCH CLI :: PRIVATE RESEARCH STACK
+# ===============================================
+# One-command installer and launcher for:
+# - Kali Linux / Ubuntu / Debian
+# - Termux
+# ===============================================
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-SCRIPT_PYTHON=""
-TOR_BIN=""
+ENV_TYPE="unknown"
+PYTHON_BIN=""
 
 print_banner() {
   printf "\n"
-  printf "\033[1;36m===============================================\033[0m\n"
-  printf "\033[1;36m   DARKSEARCH CLI :: PRIVATE RESEARCH STACK   \033[0m\n"
-  printf "\033[1;36m===============================================\033[0m\n"
-  printf "\033[1;33m                 by R.dinesh                  \033[0m\n"
+  printf "===============================================\n"
+  printf "DARKSEARCH CLI :: PRIVATE RESEARCH STACK\n"
+  printf "===============================================\n"
+  printf "             by R.dinesh\n"
   printf "\n"
 }
 
 print_info() {
-  printf "\033[1;36m[INFO]\033[0m %s\n" "$1"
+  printf "[INFO] %s\n" "$1"
 }
 
-print_warn() {
-  printf "\033[1;33m[WARN]\033[0m %s\n" "$1"
+print_ok() {
+  printf "[OK] %s\n" "$1"
 }
 
-print_err() {
-  printf "\033[1;31m[ERROR]\033[0m %s\n" "$1"
+print_error() {
+  printf "[ERROR] %s\n" "$1" >&2
 }
+
+on_error() {
+  print_error "Something went wrong during setup."
+  exit 1
+}
+trap on_error ERR
 
 have_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
-resolve_tor_bin() {
-  if have_cmd tor; then
-    TOR_BIN="$(command -v tor)"
-    return 0
-  fi
-
-  if [ -x "/usr/bin/tor" ]; then
-    TOR_BIN="/usr/bin/tor"
-    return 0
-  fi
-
-  if [ -x "/usr/sbin/tor" ]; then
-    TOR_BIN="/usr/sbin/tor"
-    return 0
-  fi
-
-  TOR_BIN=""
-  return 1
-}
-
-run_privileged() {
+run_as_root_if_needed() {
   if [ "${EUID:-$(id -u)}" -eq 0 ]; then
     "$@"
     return
@@ -69,21 +57,168 @@ run_privileged() {
     return
   fi
 
-  print_err "Root privileges are required for: $*"
-  print_err "Re-run this script as root or install sudo."
+  print_error "This step requires root privileges: $*"
+  print_error "Run as root or install sudo."
   exit 1
 }
 
-is_termux() {
-  [ -n "${TERMUX_VERSION:-}" ] || [ -n "${PREFIX:-}" ] && [ -d "/data/data/com.termux/files/usr" ]
-}
+check_internet() {
+  print_info "Checking internet connectivity..."
 
-is_tor_port_open() {
-  if [ -z "$SCRIPT_PYTHON" ]; then
-    return 1
+  if have_cmd curl; then
+    if curl -s --max-time 8 https://check.torproject.org >/dev/null; then
+      print_ok "Internet connectivity detected."
+      return
+    fi
   fi
 
-  "$SCRIPT_PYTHON" - <<'PY' >/dev/null 2>&1
+  if have_cmd wget; then
+    if wget -q --spider --timeout=8 https://check.torproject.org; then
+      print_ok "Internet connectivity detected."
+      return
+    fi
+  fi
+
+  if ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+    print_ok "Internet connectivity detected."
+    return
+  fi
+
+  print_error "No internet connectivity. Please connect and retry."
+  exit 1
+}
+
+detect_environment() {
+  print_info "Detecting environment..."
+
+  if [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux/files/usr" ]; then
+    ENV_TYPE="termux"
+    print_ok "Environment detected: Termux"
+    return
+  fi
+
+  if have_cmd apt-get || have_cmd apt; then
+    ENV_TYPE="debian"
+    print_ok "Environment detected: Debian/Kali/Ubuntu"
+    return
+  fi
+
+  print_error "Unsupported environment. This installer supports Termux and Debian-based Linux."
+  exit 1
+}
+
+resolve_python() {
+  if have_cmd python3; then
+    PYTHON_BIN="python3"
+  elif have_cmd python; then
+    PYTHON_BIN="python"
+  else
+    PYTHON_BIN=""
+  fi
+}
+
+install_dependencies_termux() {
+  print_info "Installing dependencies using pkg..."
+
+  if ! have_cmd python3 && ! have_cmd python; then
+    pkg update -y
+    pkg install -y python
+  else
+    print_info "Python already installed. Skipping Python install."
+  fi
+
+  if ! have_cmd pip && ! have_cmd pip3; then
+    pkg install -y python-pip || true
+  else
+    print_info "pip already installed. Skipping pip install."
+  fi
+
+  if ! have_cmd tor; then
+    pkg install -y tor
+  else
+    print_info "Tor already installed. Skipping Tor install."
+  fi
+
+  print_ok "Dependency installation finished (Termux)."
+}
+
+install_dependencies_debian() {
+  print_info "Installing dependencies using apt..."
+
+  run_as_root_if_needed apt-get update
+
+  missing=()
+  have_cmd python3 || missing+=(python3)
+
+  if ! python3 -m pip --version >/dev/null 2>&1; then
+    missing+=(python3-pip)
+  fi
+
+  have_cmd tor || missing+=(tor)
+
+  if [ "${#missing[@]}" -eq 0 ]; then
+    print_info "Python3, pip, and Tor already installed."
+  else
+    print_info "Installing missing packages: ${missing[*]}"
+    run_as_root_if_needed apt-get install -y "${missing[@]}"
+  fi
+
+  print_ok "Dependency installation finished (Debian/Kali/Ubuntu)."
+}
+
+setup_python_packages() {
+  resolve_python
+
+  if [ -z "$PYTHON_BIN" ]; then
+    print_error "Python is not available after installation."
+    exit 1
+  fi
+
+  print_info "Using Python: $($PYTHON_BIN --version 2>&1)"
+
+  if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    print_info "pip module missing. Attempting bootstrap via ensurepip..."
+    "$PYTHON_BIN" -m ensurepip --upgrade || true
+  fi
+
+  if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    print_error "pip is not available."
+    exit 1
+  fi
+
+  print_info "Upgrading pip..."
+  "$PYTHON_BIN" -m pip install --disable-pip-version-check --upgrade pip
+
+  print_info "Installing Python package: requests[socks]"
+  "$PYTHON_BIN" -m pip install --disable-pip-version-check "requests[socks]"
+
+  print_ok "Python environment configured."
+}
+
+start_tor() {
+  print_info "Starting Tor..."
+
+  if pgrep -x tor >/dev/null 2>&1; then
+    print_info "Tor process already running."
+    return
+  fi
+
+  tor >/dev/null 2>&1 &
+  disown || true
+
+  sleep 3
+}
+
+verify_tor() {
+  print_info "Validating Tor SOCKS endpoint on 127.0.0.1:9050..."
+
+  resolve_python
+  if [ -z "$PYTHON_BIN" ]; then
+    print_error "Python is required for Tor validation."
+    exit 1
+  fi
+
+  if "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
 import socket
 sock = socket.socket()
 sock.settimeout(1.0)
@@ -94,250 +229,72 @@ except OSError:
 finally:
     sock.close()
 PY
-}
-
-wait_for_tor() {
-  local retries=20
-  local i=1
-  while [ "$i" -le "$retries" ]; do
-    if is_tor_port_open; then
-      return 0
-    fi
-    sleep 1
-    i=$((i + 1))
-  done
-  return 1
-}
-
-install_python_by_pkg_manager() {
-  # Tries common package managers. Returns 0 on success, 1 otherwise.
-  if have_cmd pkg; then
-    print_info "Detected Termux (pkg). Installing Python..."
-    pkg update -y
-    pkg install -y python
-    return 0
-  fi
-
-  if have_cmd apt-get; then
-    print_info "Detected apt-get. Installing Python and pip..."
-    run_privileged apt-get update
-    run_privileged apt-get install -y python3 python3-pip
-    return 0
-  fi
-
-  if have_cmd dnf; then
-    print_info "Detected dnf. Installing Python and pip..."
-    run_privileged dnf install -y python3 python3-pip
-    return 0
-  fi
-
-  if have_cmd yum; then
-    print_info "Detected yum. Installing Python and pip..."
-    run_privileged yum install -y python3 python3-pip
-    return 0
-  fi
-
-  if have_cmd pacman; then
-    print_info "Detected pacman. Installing Python and pip..."
-    run_privileged pacman -Sy --noconfirm python python-pip
-    return 0
-  fi
-
-  if have_cmd zypper; then
-    print_info "Detected zypper. Installing Python and pip..."
-    run_privileged zypper install -y python3 python3-pip
-    return 0
-  fi
-
-  if have_cmd apk; then
-    print_info "Detected apk. Installing Python and pip..."
-    run_privileged apk add --no-cache python3 py3-pip
-    return 0
-  fi
-
-  return 1
-}
-
-install_tor_by_pkg_manager() {
-  # Tries common package managers. Returns 0 on success, 1 otherwise.
-  if have_cmd pkg; then
-    print_info "Installing Tor via pkg..."
-    pkg install -y tor
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  if have_cmd apt-get; then
-    print_info "Installing Tor via apt-get..."
-    run_privileged apt-get update
-    run_privileged apt-get install -y tor tor-geoipdb || run_privileged apt-get install -y tor
-    resolve_tor_bin && return 0
-    run_privileged apt-get install -y tor-daemon || true
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  if have_cmd dnf; then
-    print_info "Installing Tor via dnf..."
-    run_privileged dnf install -y tor
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  if have_cmd yum; then
-    print_info "Installing Tor via yum..."
-    run_privileged yum install -y tor
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  if have_cmd pacman; then
-    print_info "Installing Tor via pacman..."
-    run_privileged pacman -Sy --noconfirm tor
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  if have_cmd zypper; then
-    print_info "Installing Tor via zypper..."
-    run_privileged zypper install -y tor
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  if have_cmd apk; then
-    print_info "Installing Tor via apk..."
-    run_privileged apk add --no-cache tor
-    resolve_tor_bin && return 0
-    return 1
-  fi
-
-  return 1
-}
-
-enable_tor_service_if_possible() {
-  if have_cmd systemctl; then
-    run_privileged systemctl enable tor >/dev/null 2>&1 || true
-    run_privileged systemctl enable tor@default >/dev/null 2>&1 || true
-  fi
-}
-
-start_tor_automatically() {
-  if ! resolve_tor_bin; then
-    return 1
-  fi
-
-  if is_tor_port_open; then
-    print_info "Tor is already running on 127.0.0.1:9050"
-    return 0
-  fi
-
-  if is_termux; then
-    print_info "Termux detected. Starting Tor in background..."
-    nohup "$TOR_BIN" >/dev/null 2>&1 &
-  elif have_cmd systemctl; then
-    enable_tor_service_if_possible
-    print_info "Starting Tor service via systemctl..."
-    run_privileged systemctl start tor || true
-    run_privileged systemctl start tor@default || true
-  elif have_cmd service; then
-    print_info "Starting Tor service via service command..."
-    run_privileged service tor start || true
+  then
+    print_ok "Tor is running on 127.0.0.1:9050"
   else
-    print_info "Starting Tor process in background..."
-    nohup "$TOR_BIN" >/dev/null 2>&1 &
+    print_error "Tor is not running on 127.0.0.1:9050"
+    print_error "Tor setup failed. Please check Tor installation logs."
+    exit 1
   fi
-
-  if wait_for_tor; then
-    print_info "Tor started and is reachable at 127.0.0.1:9050"
-    return 0
-  fi
-
-  print_warn "Tor start was attempted but port 9050 is still unreachable."
-  return 1
 }
 
-print_banner
-print_info "Starting DarkSearch CLI setup in: $PROJECT_DIR"
+validate_project() {
+  print_info "Validating project files..."
 
-if have_cmd python3; then
-  PYTHON_BIN="python3"
-elif have_cmd python; then
-  PYTHON_BIN="python"
-else
-  print_warn "Python is not installed. Attempting automatic installation..."
-  if ! install_python_by_pkg_manager; then
-    print_err "Could not auto-install Python (unsupported package manager)."
-    print_err "Install Python 3 manually, then run this script again."
+  if [ ! -f "$PROJECT_DIR/main.py" ]; then
+    print_error "Missing required file: main.py"
     exit 1
   fi
 
-  if have_cmd python3; then
-    PYTHON_BIN="python3"
-  elif have_cmd python; then
-    PYTHON_BIN="python"
-  else
-    print_err "Python installation attempt completed, but Python is still unavailable."
+  if [ ! -d "$PROJECT_DIR/cli" ] || [ ! -d "$PROJECT_DIR/core" ] || [ ! -d "$PROJECT_DIR/engines" ] || [ ! -d "$PROJECT_DIR/processing" ] || [ ! -d "$PROJECT_DIR/privacy" ] || [ ! -d "$PROJECT_DIR/utils" ]; then
+    print_error "Missing one or more required root directories: cli/, core/, engines/, processing/, privacy/, utils/"
     exit 1
   fi
-fi
 
-SCRIPT_PYTHON="$PYTHON_BIN"
+  print_ok "Project validation passed."
+}
 
-print_info "Using Python: $($PYTHON_BIN --version 2>&1)"
+set_permissions() {
+  print_info "Setting executable permission on main.py..."
+  chmod +x "$PROJECT_DIR/main.py"
+  print_ok "Permissions updated."
+}
 
-if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
-  print_info "pip is available."
-else
-  print_warn "pip is not available. Attempting to bootstrap pip..."
-  if ! "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1; then
-    print_warn "ensurepip did not succeed. Trying package manager install for pip..."
-    install_python_by_pkg_manager || true
+launch_app() {
+  resolve_python
+  if [ -z "$PYTHON_BIN" ]; then
+    print_error "Python not found. Cannot launch DarkSearch CLI."
+    exit 1
   fi
-fi
 
-if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
-  print_err "pip is still unavailable. Please install pip manually and retry."
-  exit 1
-fi
+  print_ok "Setup complete. Launching DarkSearch CLI..."
+  "$PYTHON_BIN" "$PROJECT_DIR/main.py"
+}
 
-print_info "Upgrading pip tooling..."
-"$PYTHON_BIN" -m pip install --disable-pip-version-check --upgrade pip setuptools wheel
+main() {
+  print_banner
+  check_internet
+  detect_environment
 
-print_info "Installing Python dependency: requests[socks]"
-"$PYTHON_BIN" -m pip install --disable-pip-version-check "requests[socks]"
+  case "$ENV_TYPE" in
+    termux)
+      install_dependencies_termux
+      ;;
+    debian)
+      install_dependencies_debian
+      ;;
+    *)
+      print_error "Unsupported environment state."
+      exit 1
+      ;;
+  esac
 
-if resolve_tor_bin; then
-  print_info "Tor command found."
-else
-  print_warn "Tor is not installed. Attempting automatic installation..."
-  if ! install_tor_by_pkg_manager; then
-    print_warn "Could not auto-install Tor (unsupported package manager)."
-    print_warn "Install Tor manually to use DarkSearch CLI securely."
-  fi
-fi
+  setup_python_packages
+  start_tor
+  verify_tor
+  validate_project
+  set_permissions
+  launch_app
+}
 
-if resolve_tor_bin; then
-  print_info "Tor installation check: OK"
-  if start_tor_automatically; then
-    print_info "Launching DarkSearch CLI..."
-    "$PYTHON_BIN" main.py
-  else
-    cat <<'EOF'
-
-Tor is installed but not currently reachable on 127.0.0.1:9050.
-Start Tor manually, then run:
-  python3 main.py
-EOF
-  fi
-else
-  cat <<'EOF'
-
-Setup completed with warnings.
-Python dependencies are installed, but Tor is missing.
-Install/start Tor, then run:
-  python3 main.py
-EOF
-fi
-
-print_info "Setup script completed."
+main "$@"

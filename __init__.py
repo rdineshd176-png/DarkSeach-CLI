@@ -1,0 +1,1 @@
+"""DarkSearch CLI package."""
