@@ -11,6 +11,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 SCRIPT_PYTHON=""
+TOR_BIN=""
 
 print_banner() {
   printf "\n"
@@ -35,6 +36,26 @@ print_err() {
 
 have_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+resolve_tor_bin() {
+  if have_cmd tor; then
+    TOR_BIN="$(command -v tor)"
+    return 0
+  fi
+
+  if [ -x "/usr/bin/tor" ]; then
+    TOR_BIN="/usr/bin/tor"
+    return 0
+  fi
+
+  if [ -x "/usr/sbin/tor" ]; then
+    TOR_BIN="/usr/sbin/tor"
+    return 0
+  fi
+
+  TOR_BIN=""
+  return 1
 }
 
 run_privileged() {
@@ -142,51 +163,67 @@ install_tor_by_pkg_manager() {
   if have_cmd pkg; then
     print_info "Installing Tor via pkg..."
     pkg install -y tor
-    return 0
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   if have_cmd apt-get; then
     print_info "Installing Tor via apt-get..."
     run_privileged apt-get update
-    run_privileged apt-get install -y tor
-    return 0
+    run_privileged apt-get install -y tor tor-geoipdb || run_privileged apt-get install -y tor
+    resolve_tor_bin && return 0
+    run_privileged apt-get install -y tor-daemon || true
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   if have_cmd dnf; then
     print_info "Installing Tor via dnf..."
     run_privileged dnf install -y tor
-    return 0
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   if have_cmd yum; then
     print_info "Installing Tor via yum..."
     run_privileged yum install -y tor
-    return 0
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   if have_cmd pacman; then
     print_info "Installing Tor via pacman..."
     run_privileged pacman -Sy --noconfirm tor
-    return 0
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   if have_cmd zypper; then
     print_info "Installing Tor via zypper..."
     run_privileged zypper install -y tor
-    return 0
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   if have_cmd apk; then
     print_info "Installing Tor via apk..."
     run_privileged apk add --no-cache tor
-    return 0
+    resolve_tor_bin && return 0
+    return 1
   fi
 
   return 1
 }
 
+enable_tor_service_if_possible() {
+  if have_cmd systemctl; then
+    run_privileged systemctl enable tor >/dev/null 2>&1 || true
+    run_privileged systemctl enable tor@default >/dev/null 2>&1 || true
+  fi
+}
+
 start_tor_automatically() {
-  if ! have_cmd tor; then
+  if ! resolve_tor_bin; then
     return 1
   fi
 
@@ -197,8 +234,9 @@ start_tor_automatically() {
 
   if is_termux; then
     print_info "Termux detected. Starting Tor in background..."
-    nohup tor >/dev/null 2>&1 &
+    nohup "$TOR_BIN" >/dev/null 2>&1 &
   elif have_cmd systemctl; then
+    enable_tor_service_if_possible
     print_info "Starting Tor service via systemctl..."
     run_privileged systemctl start tor || true
     run_privileged systemctl start tor@default || true
@@ -207,7 +245,7 @@ start_tor_automatically() {
     run_privileged service tor start || true
   else
     print_info "Starting Tor process in background..."
-    nohup tor >/dev/null 2>&1 &
+    nohup "$TOR_BIN" >/dev/null 2>&1 &
   fi
 
   if wait_for_tor; then
@@ -269,7 +307,7 @@ print_info "Upgrading pip tooling..."
 print_info "Installing Python dependency: requests[socks]"
 "$PYTHON_BIN" -m pip install --disable-pip-version-check "requests[socks]"
 
-if have_cmd tor; then
+if resolve_tor_bin; then
   print_info "Tor command found."
 else
   print_warn "Tor is not installed. Attempting automatic installation..."
@@ -279,7 +317,7 @@ else
   fi
 fi
 
-if have_cmd tor; then
+if resolve_tor_bin; then
   print_info "Tor installation check: OK"
   if start_tor_automatically; then
     print_info "Launching DarkSearch CLI..."
